@@ -1,0 +1,17 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<h1>Adding Recipes for: {{ search_page }}</h1>
+
+<ul>
+{% for entry in log %}
+    <li>
+    {{entry | safe}}<br>
+    </li>
+{% endfor %}
+</ul>
+<form>
+<input type="submit" formaction="{% url 'craftadmin:addrecipe' %}" value="Add Another">
+<input type="submit" formaction="{% url 'craftadmin:index' %}" value="Home">
+</form>
+{% endblock %}  
