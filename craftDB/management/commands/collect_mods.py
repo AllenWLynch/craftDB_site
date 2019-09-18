@@ -17,12 +17,7 @@ class Command(BaseCommand):
                 mod = Mod.objects.get(name = mod_name)
             except Mod.DoesNotExist as err:
                 mod = Mod.objects.create(name = mod_name)
-            mod.abbreviations = ''
-            for abbrev in abbrevs.values():
-                if mod.abbreviations == '':
-                    mod.abbreviations = '|' + abbrev + '|'
-                else:
-                    mod.abbreviations = mod.abbreviations + abbrev + '|'
+            mod.abbreviations = ','.join(abbrevs.values())
             mod.save()
             print('Found mod:', mod)
 

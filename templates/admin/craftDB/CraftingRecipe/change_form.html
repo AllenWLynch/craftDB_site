@@ -33,6 +33,20 @@
   </ul>
 {% endif %}{% endif %}
 {% endblock %}
+
+<div class='crafting_grid'>
+<h2>Crafts: {{adminform.form.instance.amount}} x <img src="{{adminform.form.instance.output.get_sprite_url}}" width="32px" title="{{adminform.form.instance.output.name}}"></a></h2>
+<table border="3px" bordercolor = 'black'>
+  {% for rowdata in adminform.form.instance.get_organized_slotdata %}
+  <tr>
+    {% for value in rowdata %}
+      <td><a href="{{value.editurl}}" target="_blank"><img src="{{value.url}}" width="32px" title="{{value.tooltip}}"></a></td>
+    {% endfor %}
+  </tr>
+  {% endfor %}
+  </table>
+</div><br>
+
 <form {% if has_file_field %}enctype="multipart/form-data" {% endif %}action="{{ form_url }}" method="post" id="{{ opts.model_name }}_form" novalidate>{% csrf_token %}{% block form_top %}{% endblock %}
 <div>
 {% if is_popup %}<input type="hidden" name="{{ is_popup_var }}" value="1">{% endif %}
@@ -58,19 +72,6 @@
     {% include inline_admin_formset.opts.template %}
 {% endfor %}
 {% endblock %}
-
-<div class='crafting_grid'>
-<h1>Crafting Grid</h1>
-<table border="3px" bordercolor = 'black'>
-  {% for rowdata in adminform.form.instance.get_organized_slotdata %}
-  <tr>
-    {% for value in rowdata %}
-      <td><a href="{{value.editurl}}" target="_blank"><img src="{{value.url}}" width="32px" title="{{value.tooltip}}"></a></td>
-    {% endfor %}
-  </tr>
-  {% endfor %}
-  </table>
-</div>
 
 {% block after_related_objects %}{% endblock %}
 

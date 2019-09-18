@@ -29,7 +29,8 @@ class RecipeDependencyInline(admin.TabularInline):
 class RecipeAdmin(admin.ModelAdmin):
     fieldsets = [
         ('OUTPUT', { 'fields' : ['output','amount',]}),
-        ('DEPENDENCIES', {'fields' : ['from_mod',]})
+        ('DEPENDENCIES', {'fields' : ['from_mod',]}),
+        ('WIKIDATA', {'fields' : ['recipe_text']})
     ]
     list_display = ('id','output','amount')
     autocomplete_fields = ['output']
@@ -75,11 +76,19 @@ class MachineAdmin(admin.ModelAdmin):
     exclude = ('aliases',)
     search_fields = ['name']
 
+class ModInline(admin.TabularInline):
+    model = ModPack.mods.through
+    extra = 0
+
+class ModPackAdmin(admin.ModelAdmin):
+    exclude = ('mods',)
+    inlines = [ModInline]
+
 myadmin.register(Item, ItemAdmin)
 myadmin.register(Machine, MachineAdmin)
 myadmin.register(Mod, ModAdmin)
 myadmin.register(OreDict)
-myadmin.register(ModPack)
+myadmin.register(ModPack, ModPackAdmin)
 myadmin.register(Group)
 myadmin.register(CraftingRecipe, CraftingRecipeAdmin)
 myadmin.register(MachineRecipe, MachineRecipeAdmin)

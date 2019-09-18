@@ -21,7 +21,7 @@ class OreDict(models.Model):
         try:
             self.leading_item.get_sprite_url()
         except AttributeError:
-            return '/media/sprites/default.jpg'
+            return '/sprites/default.jpg'
 
     def get_tooltip(self):
         return 'Oredict: ' + str(self)
@@ -36,8 +36,7 @@ class OreDict(models.Model):
 class Mod(models.Model):
     name = models.CharField(max_length = 200)
     abbreviations = models.CharField(max_length = 200, default = '')
-    overwriting_mod = models.ForeignKey('self', blank = True, null = True, 
-                                        on_delete = models.SET_NULL, verbose_name = 'Overwritten By')
+    overwriting_mods = models.ManyToManyField('self', blank = True, verbose_name = 'Overwritten By')
     
     class Meta:
         ordering = ['name']
@@ -50,14 +49,14 @@ class Mod(models.Model):
         try:
             return Mod.objects.get(name = name)
         except Mod.DoesNotExist:
-            return Mod.objects.get(abbreviations__contains = '|' + name + '|')
+            return Mod.objects.get(abbreviations__iregex = r'(^|,){}(,|$)'.format(name))
 
 class Item(models.Model):
     display_name = models.CharField('Item Name', max_length = 300)
-    itemid = models.CharField('ID',max_length = 300)
+    itemid = models.CharField('ID',max_length = 300, blank = True)
     stack = models.IntegerField('Stack Size', default = 64, validators=[MinValueValidator(1), MaxValueValidator(64)])
-    sprite = models.ImageField(upload_to = 'sprites/', default = '/media/sprites/default.jpg')
-    mod = models.ForeignKey(Mod, on_delete = models.CASCADE, verbose_name = 'Source Mod')
+    sprite = models.ImageField(upload_to = 'sprites/', default = 'sprites/default.jpg')
+    mod = models.ForeignKey(Mod, on_delete = models.CASCADE, verbose_name = 'Source Mod', null = True)
     oredict = models.ManyToManyField(OreDict, blank = True, verbose_name = 'Ore Dictionary')
     base_resource = models.BooleanField('Base Resource', default = False)
     
@@ -85,7 +84,7 @@ class Item(models.Model):
         try:
             return self.sprite.url
         except ValueError:
-            return '/media/sprites/default.jpg'
+            return '/sprites/default.jpg'
 
     def get_tooltip(self):
         return str(self)
@@ -121,6 +120,8 @@ class Recipe(models.Model):
     amount = models.IntegerField('Amount',default=1)
     from_mod = models.ForeignKey(Mod, on_delete = models.CASCADE, verbose_name = 'From Mod')
     dependencies = models.ManyToManyField(Mod, blank = True, related_name='dependent_recipes')
+    preferred = models.BooleanField('Preferred Recipe', default= False)
+    recipe_text = models.TextField('Template')
 
     class Meta:
         verbose_name = 'Recipe'
@@ -162,6 +163,7 @@ class ByProducts(models.Model):
     recipe = models.ForeignKey(Recipe, on_delete = models.CASCADE)
     item = models.ForeignKey(Item, on_delete = models.CASCADE, verbose_name = 'Byproduct')
     amount = models.IntegerField('Amount',default=1)
+    chance = models.IntegerField('% Chance', default=100)
 
     def __str__(self):
         return str(self.amount) + 'x' + str(self.item)
@@ -187,7 +189,7 @@ class MachineRecipe(Recipe):
     def required_resources(self):
         input_counter = Counter()
         for _input in self.machineinput_set.all():
-            input_counter[_input.item.itemid] += _input.amount
+            input_counter[_input.item_object] += _input.amount
         return input_counter
 
 class MachineInput(InputCommonInfo):
@@ -205,7 +207,7 @@ class CraftingRecipe(Recipe):
     def required_resources(self):
         input_counter = Counter()
         for _input in self.slotdata_set.all():
-            input_counter[_input.item.itemid] += 1
+            input_counter[_input.item_object] += 1
         return input_counter
 
     def min_stack(self):

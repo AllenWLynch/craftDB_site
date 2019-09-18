@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand, CommandError
 from craftDB.models import ModPack, Mod, Item
 from craftDB_site.settings import DOMAIN_NAME
 import collect_library as collectLib
-
+from craftDB.wikiparser import Log_Node
 modpack_endpoint = 'https://ftbwiki.org/api.php?action=ask&query=[[Category:Modpacks]][[{}]]|format=list|?Has%20mod&format=json'
 
 class Command(BaseCommand):
@@ -18,6 +18,10 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
               
         modpack_name = options['modpack_name']
+        
+        root_log = Log_Node('Collecting {}'.format(modpack_name))
+        print(root_log)
+        
         try:
             new_modpack = ModPack.objects.get(name = modpack_name)
         except ModPack.DoesNotExist:
@@ -35,9 +39,9 @@ class Command(BaseCommand):
                 mod = Mod.objects.get(name = mod_data['fulltext'])
                 new_modpack.mods.add(mod)
 
-                collectLib.collect_mod(mod_data['fulltext'])
+                collectLib.collect_mod(mod_data['fulltext'], root_log)
 
             except Mod.DoesNotExist:
-                print('Failed to find mod: {}'.format(mod_data['fulltext']))
-
+                print(root_log.add_node('Failed to find mod: {}'.format(mod_data['fulltext'])))
+                
             break

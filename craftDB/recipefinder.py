@@ -20,27 +20,25 @@ class new_DB_entry(wp.BadItemPageException):
     def __str__(self):
         return 'Added {}: {}'.format(self.newObj.__class__.__name__, str(self.newObj))
 
-def get_oredict_from_wiki(name, log):
+def get_oredict_from_wiki(name, log_node):
     contained_items = set()
     
     for item_page in wp.scrape_oredict(name):
         try:
             display_name, mod = wp.parse_pagetitle(item_page)
-            new_item = hitDB_or_wiki_for_item(display_name, mod, item_page)
+            new_item = hitDB_or_wiki_for_item(display_name, mod, item_page, log_node)
             contained_items.add( new_item )
         except wp.BadItemPageException as err:
-            log.append(err)
+            log_node.add_node(err)
     
     if len(contained_items) == 0:
         raise wp.NoOreDictException()
 
     new_dict = OreDict.objects.create(name = name)
-    log.append(result_dbEntry(new_dict))
+    new_dict_parent = log_node.add_node(new_DB_entry(new_dict))
     for contained_item in contained_items:
         new_dict.item_set.add(contained_item)
-        log.append(result_dbEntry(contained_item))
-    
-    log.append('Adding recipes using Oredict subsitutions</ul>')
+        new_dict_parent.add_node(new_DB_entry(contained_item))
     return new_dict
 
 def hitDB_or_wiki_for_item(display_name, mod, page_title, log_node, wikidata = None):
@@ -54,7 +52,7 @@ def hitDB_or_wiki_for_item(display_name, mod, page_title, log_node, wikidata = N
         infobox_data = wikidata.scrape_infobox()
         
         try:
-            infobox_data['mod'] = Mod.objects.get(name = infobox_data['mod']).id
+            infobox_data['mod'] = Mod.find_mod(infobox_data['mod']).id
         except KeyError:
             raise wp.IncompletePageException(page_title, infobox_data)
         except Mod.DoesNotExist:
@@ -66,7 +64,7 @@ def hitDB_or_wiki_for_item(display_name, mod, page_title, log_node, wikidata = N
             raise wp.IncompletePageException(page_title, infobox_data)
 
         new_item = item_form.save()
-        log.append(result_dbEntry(new_item))
+        log_node.add_node(new_DB_entry(new_item))
 
         try:
             image_filename, image_url = wikidata.get_main_image()
@@ -131,14 +129,15 @@ class Potential_Recipe():
         'Attempting to construct from template: <a href=\"https://ftbwiki.org/index.php?action=edit&title={}&section={}\">{}</a>'.format(self.page_title, self.section_num, self.header)
     
 
-def instantiate_recipe(page_title, log_node, output_item, header, grid, recipe_terms, section_num, modification):
+def instantiate_recipe(page_title, output_item, header, grid, recipe_terms, section_num, modification):
     
     from_mod = output_item.mod
     if 'expert' in header.lower():
         from_mod = Mod.objects.get(name = 'Feed The Beast Infinity Evolved Expert Mode')
     elif not header == 'Recipe':
         try:
-            from_mod = Mod.objects.get(abbreviations__contains = '|' + re.match(r'{{Mod[l|L]ink\|(\w+?)}}', header).group(1) +'|')
+            abbrev_or_name = re.match(r'{{Mod[Ll]ink\|(.+?)}}', header).group(1)
+            from_mod = Mod.find_mod(abbrev_or_name)
         except (Mod.DoesNotExist, AttributeError):
             pass
 
@@ -150,13 +149,19 @@ def instantiate_recipe(page_title, log_node, output_item, header, grid, recipe_t
     if grid == 'Crafting Table':
         inputs, output_info, byproducts = wp.getIO_crafting_recipe(recipe_terms)
         new_recipe = CraftingRecipe(output = output_item, amount = output_info['amount'], 
-                        from_mod = from_mod)
+                        from_mod = from_mod, recipe_text = recipe_terms)
     else:
-        raise Exception('Cannot process machine recipes yet')
+        inputs, output_info, byproducts = wp.getIO_machining_recipe(recipe_terms, page_title)
+        try:
+            machine_with = Machine.objects.get(name = grid)
+        except Machine.DoesNotExist:
+            machine_with = Machine.objects.create(name = grid)
+        new_recipe = MachineRecipe(output = output_item, amount = output_info['amount'], 
+                                    machine = machine_with, recipe_text = recipe_terms, from_mod = from_mod)
 
     return {
         'new_recipe' : new_recipe, 
-        'parent_node' : log_node.add_node(Potential_Recipe(page_title, section_num, header)), 
+        'parent_node' : wp.Log_Node(Potential_Recipe(page_title, section_num, header)), 
         'inputs' : inputs, 
         'byproducts' : byproducts, 
         'dependencies' : dependencies,
@@ -173,10 +178,17 @@ def parse_recipe(new_recipe, parent_node, inputs, byproducts, dependencies):
         for item_object, input_info in zip(db_item_objects, inputs):
             new_recipe.slotdata_set.create(slot = int(input_info['slot']), item_object = item_object)
     except Recipe.craftingrecipe.RelatedObjectDoesNotExist:
-        try:
-            Machine.objects.get(name = grid)
-        except Machine.DoesNotExist:
-            Machine.objects.create(name = grid)
+        for item_object, input_info in zip(db_item_objects, inputs):
+            new_recipe.machineinput_set.create(item_object = item_object, amount = input_info['amount'])
+        
+    ## check for dups
+    for saved_recipe in Recipe.objects.filter(from_mod = new_recipe.from_mod, output = new_recipe.output):
+        if not saved_recipe.id == new_recipe.id:
+            required = saved_recipe.required_resources()
+            if required & new_recipe.required_resources() == required:
+                new_recipe.delete()
+                parent_node.add_node('Duplicate recipe found: {}'.format(str(saved_recipe)))
+                return parent_node
     
     for mod in dependencies:
             new_recipe.dependencies.add(mod)
@@ -184,5 +196,7 @@ def parse_recipe(new_recipe, parent_node, inputs, byproducts, dependencies):
     #for byproduct in byproducts:
         #    new_recipe.byproduct_set.create(byproduct)
     parent_node.add_node(new_DB_entry(new_recipe))
+
+    return parent_node
 
 
